@@ -24,7 +24,7 @@ def drawDigitHeatmap(pixels: np.ndarray, showNumbers: bool = True) -> None:
 
     # plot the heatmap;  see: https://seaborn.pydata.org/generated/seaborn.heatmap.html
     # (fmt = "d" indicates to show annotation with integer format)
-    sns.heatmap(pixels, annot = showNumbers, fmt = "d", linewidths = 0.5, \
+    sns.heatmap(pixels, annot = showNumbers, fmt = ".1f", linewidths = 0.5, \
                 ax = axes, cmap = colormap)
     plt.show(block = False)
 
@@ -57,8 +57,10 @@ def cleanTheData(df: pd.DataFrame) -> np.ndarray:
     Returns:
         np.ndarray: Array of the cleaned data.
     """
-    import numpy as np
-    import pandas as pd
+    # Drop extra column
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    if 'excerpted from http://yann.lecun.com/exdb/mnist/' in df.columns:
+        df = df.drop(columns=['excerpted from http://yann.lecun.com/exdb/mnist/'])
 
     # Define label and pixel columns explicitly
     label_col = "actual_digit"
@@ -103,6 +105,32 @@ def predictiveModel(train_arr: np.ndarray, features: np.ndarray) -> int:
     nn_index = np.argmin(dists)
     return int(labels[nn_index])
 
+def test_accuracy_split80_20(all_arr: np.ndarray) -> float:
+    """
+    Splits data: first 80% train, last 20% test.
+    Uses progress.bar.Bar to display progress during predictions.
+    """
+    N = all_arr.shape[0]
+    cut = int(0.8 * N)
+    train, test = all_arr[:cut], all_arr[cut:]
+
+    y_test = test[:, 0].astype(int)
+    X_test = test[:, 1:]
+
+    correct = 0
+    bar = Bar('Predicting', max=len(X_test))
+
+    for i in range(len(X_test)):
+        y_hat = predictiveModel(train, X_test[i])
+        if y_hat == y_test[i]:
+            correct += 1
+        bar.next()
+    bar.finish()
+
+    acc = correct / len(y_test)
+    print(f"\nAccuracy (80/20 split): {acc:.3f}")
+    return acc
+
 ###################
 def main() -> None:
     # for read_csv, use header=0 when row 0 is a header row
@@ -124,9 +152,12 @@ def main() -> None:
         drawDigitHeatmap(pixels)
         plt.show()
     all_arr = cleanTheData(df)
+    print("\n✅ Data cleaned and converted to NumPy array.")
+    print(f"Shape: {all_arr.shape} (rows × cols)\n")
 
     # 1-NN classifier
     from progress.bar import Bar
+    print(f"all_arr: {all_arr}")
     N = all_arr.shape[0]
     cut = int(0.8 * N)
     train, test = all_arr[:cut], all_arr[cut:]
@@ -142,6 +173,7 @@ def main() -> None:
             correct += 1
         bar.next()
     bar.finish()
+    print(y_test,cut,train,test)
     acc = correct / len(y_test)
     print(f"\nAccuracy (80/20 split): {acc:.3f}\n")
 
@@ -149,6 +181,8 @@ def main() -> None:
     cut = int(0.2 * N)
     test, train = all_arr[:cut], all_arr[cut:]
     y_test = test[:, 0].astype(int)
+    print(f"y_test: {y_test}")
+    print(f"debug check: { np.unique(all_arr[:,0])}")
     X_test = test[:, 1:]
 
     print("Running 1-NN on 20/80 swap")
@@ -162,7 +196,19 @@ def main() -> None:
     bar.finish()
     acc2 = correct / len(y_test)
     print(f"\nAccuracy (20/80 swap): {acc2:.3f}\n")
-
+    # Visualize first five incorrectly predicted digits
+    shown = 0
+    y_test = test[:, 0].astype(int)
+    X_test = test[:, 1:]
+    for i in range(len(X_test)):
+        y_pred = predictiveModel(train, X_test[i])
+        if y_pred != y_test[i]:
+            pixels = np.reshape(X_test[i] * 16, (8,8))
+            drawDigitHeatmap(pixels)
+            plt.show(block=False)
+            shown += 1
+            if shown == 5:
+                break
     #
     # OK!  Onward to knn for digits! (based on your iris work...)
     #
