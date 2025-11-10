@@ -105,32 +105,6 @@ def predictiveModel(train_arr: np.ndarray, features: np.ndarray) -> int:
     nn_index = np.argmin(dists)
     return int(labels[nn_index])
 
-def test_accuracy_split80_20(all_arr: np.ndarray) -> float:
-    """
-    Splits data: first 80% train, last 20% test.
-    Uses progress.bar.Bar to display progress during predictions.
-    """
-    N = all_arr.shape[0]
-    cut = int(0.8 * N)
-    train, test = all_arr[:cut], all_arr[cut:]
-
-    y_test = test[:, 0].astype(int)
-    X_test = test[:, 1:]
-
-    correct = 0
-    bar = Bar('Predicting', max=len(X_test))
-
-    for i in range(len(X_test)):
-        y_hat = predictiveModel(train, X_test[i])
-        if y_hat == y_test[i]:
-            correct += 1
-        bar.next()
-    bar.finish()
-
-    acc = correct / len(y_test)
-    print(f"\nAccuracy (80/20 split): {acc:.3f}")
-    return acc
-
 ###################
 def main() -> None:
     # for read_csv, use header=0 when row 0 is a header row
