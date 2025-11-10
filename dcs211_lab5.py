@@ -3,6 +3,9 @@ import pandas as pd     # Pandas is Python's "data" library ("dataframe" == spre
 import seaborn as sns   # yay for Seaborn plots!
 import matplotlib.pyplot as plt
 import random
+import sklearn
+from sklearn.neighbors import KNeighborsClassifier
+
 
 ###########################################################################
 def drawDigitHeatmap(pixels: np.ndarray, showNumbers: bool = True) -> None:
@@ -24,7 +27,7 @@ def drawDigitHeatmap(pixels: np.ndarray, showNumbers: bool = True) -> None:
 
     # plot the heatmap;  see: https://seaborn.pydata.org/generated/seaborn.heatmap.html
     # (fmt = "d" indicates to show annotation with integer format)
-    sns.heatmap(pixels, annot = showNumbers, fmt = ".1f", linewidths = 0.5, \
+    sns.heatmap(pixels, annot = showNumbers, fmt = "d", linewidths = 0.5, \
                 ax = axes, cmap = colormap)
     plt.show(block = False)
 
@@ -57,10 +60,8 @@ def cleanTheData(df: pd.DataFrame) -> np.ndarray:
     Returns:
         np.ndarray: Array of the cleaned data.
     """
-    # Drop extra column
-    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-    if 'excerpted from http://yann.lecun.com/exdb/mnist/' in df.columns:
-        df = df.drop(columns=['excerpted from http://yann.lecun.com/exdb/mnist/'])
+    import numpy as np
+    import pandas as pd
 
     # Define label and pixel columns explicitly
     label_col = "actual_digit"
@@ -105,6 +106,74 @@ def predictiveModel(train_arr: np.ndarray, features: np.ndarray) -> int:
     nn_index = np.argmin(dists)
     return int(labels[nn_index])
 
+#################################################
+
+def splitData(all_data):
+    '''
+    Input: numpy array (all_data)
+           column 0 = labels
+           columns 1.. = features
+    Output: X_test, y_test, X_train, y_train
+    '''
+    y = all_data[:, 0]          # labels
+    X = all_data[:, 1:]         # pixel data
+
+    split_index = int(0.8 * len(all_data))
+
+    X_train = X[:split_index]
+    y_train = y[:split_index]
+
+    X_test = X[split_index:]
+    y_test = y[split_index:]
+
+    return X_test, y_test, X_train, y_train
+
+def compareLabels(predicted_labels: np.ndarray, actual_labels: np.ndarray) -> int:
+    '''A neatly formatted comparison, returning the number correct.'''
+    num_labels = len(predicted_labels)
+    num_correct = 0
+
+    for i in range(num_labels):
+        predicted = int(round(predicted_labels[i]))  # protects from float imprecision
+        actual    = int(round(actual_labels[i]))
+        result = "incorrect"
+        if predicted == actual:
+            result = ""
+            num_correct += 1
+
+        # Formatting stays identical, but now we print the digit itself
+        print(f"row {i:>3d} : ", end="")
+        print(f"{str(predicted):>12s} ", end="")   # predicted digit as string
+        print(f"{str(actual):<12s}   {result}")    # actual digit as string
+
+    print()
+    print(f"Correct: {num_correct} out of {num_labels}")
+    return num_correct
+
+def runSimpleKNN(X_train, y_train, X_test, y_test, k=3):
+    """
+    Runs scikit-learn k-NN once using a guessed value of k.
+    Prints accuracy and uses compareLabels to display results.
+    """
+
+    print(f"\nRunning scikit-learn k-NN with k = {k}...")
+
+    # Train the model
+    model = KNeighborsClassifier(n_neighbors=k)
+    model.fit(X_train, y_train)
+
+    # Predict on test data
+    predictions = model.predict(X_test)
+
+    # Compute accuracy
+    accuracy = (predictions == y_test).mean()
+    print("Accuracy:", round(accuracy, 3))
+
+    # Compare predicted vs actual labels
+    compareLabels(predictions, y_test)
+
+    return predictions, accuracy
+
 ###################
 def main() -> None:
     # for read_csv, use header=0 when row 0 is a header row
@@ -126,12 +195,9 @@ def main() -> None:
         drawDigitHeatmap(pixels)
         plt.show()
     all_arr = cleanTheData(df)
-    print("\n✅ Data cleaned and converted to NumPy array.")
-    print(f"Shape: {all_arr.shape} (rows × cols)\n")
 
     # 1-NN classifier
     from progress.bar import Bar
-    print(f"all_arr: {all_arr}")
     N = all_arr.shape[0]
     cut = int(0.8 * N)
     train, test = all_arr[:cut], all_arr[cut:]
@@ -147,7 +213,6 @@ def main() -> None:
             correct += 1
         bar.next()
     bar.finish()
-    print(y_test,cut,train,test)
     acc = correct / len(y_test)
     print(f"\nAccuracy (80/20 split): {acc:.3f}\n")
 
@@ -155,8 +220,6 @@ def main() -> None:
     cut = int(0.2 * N)
     test, train = all_arr[:cut], all_arr[cut:]
     y_test = test[:, 0].astype(int)
-    print(f"y_test: {y_test}")
-    print(f"debug check: { np.unique(all_arr[:,0])}")
     X_test = test[:, 1:]
 
     print("Running 1-NN on 20/80 swap")
@@ -170,19 +233,7 @@ def main() -> None:
     bar.finish()
     acc2 = correct / len(y_test)
     print(f"\nAccuracy (20/80 swap): {acc2:.3f}\n")
-    # Visualize first five incorrectly predicted digits
-    shown = 0
-    y_test = test[:, 0].astype(int)
-    X_test = test[:, 1:]
-    for i in range(len(X_test)):
-        y_pred = predictiveModel(train, X_test[i])
-        if y_pred != y_test[i]:
-            pixels = np.reshape(X_test[i] * 16, (8,8))
-            drawDigitHeatmap(pixels)
-            plt.show(block=False)
-            shown += 1
-            if shown == 5:
-                break
+
     #
     # OK!  Onward to knn for digits! (based on your iris work...)
     #
@@ -190,5 +241,8 @@ def main() -> None:
 ###############################################################################
 # wrap the call to main inside this if so that _this_ file can be imported
 # and used as a library, if necessary, without executing its main
+
+    
+
 if __name__ == "__main__":
     main()
