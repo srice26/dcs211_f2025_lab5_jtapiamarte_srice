@@ -47,6 +47,37 @@ def fetchDigit(df: pd.core.frame.DataFrame, which_row: int) -> tuple[int, np.nda
     pixels = np.reshape(pixels, (8,8))  # makes 8x8
     return (digit, pixels)              # return a tuple
 
+
+def cleanTheData(df: pd.DataFrame) -> np.ndarray:
+    """
+    Cleans digits.csv data and returns as a NumPy array.
+    - Converts all columns to numeric
+    - Removes rows with NaNs
+    - Normalizes pixel values to [0, 1]
+    Returns array with label as first column.
+    """
+    df = df.dropna().copy()
+    for c in df.columns:
+        df[c] = pd.to_numeric(df[c], errors='coerce')
+    df = df.dropna().copy()
+    label_col = 'digit' if 'digit' in df.columns else df.columns[-1]
+    pixel_cols = [c for c in df.columns if c != label_col]
+    df[pixel_cols] = df[pixel_cols] / 255.0
+    array = df[[label_col] + pixel_cols].to_numpy()
+    return array
+
+def predictiveModel(train_arr: np.ndarray, features: np.ndarray) -> int:
+    """
+    Implements 1-NN by hand.
+    train_arr: numpy array with labels in col 0, pixels in cols 1:
+    features: numpy array of pixel values for one test digit.
+    Returns predicted label.
+    """
+    labels = train_arr[:, 0].astype(int)
+    pixels = train_arr[:, 1:]
+    dists = np.linalg.norm(pixels - features[None, :], axis=1)
+    return int(labels[np.argmin(dists)])
+
 ###################
 def main() -> None:
     # for read_csv, use header=0 when row 0 is a header row
@@ -66,7 +97,21 @@ def main() -> None:
         print(f"The pixels are\n{pixels}")  
         drawDigitHeatmap(pixels)
         plt.show()
-
+    #test for cleanTheData function
+    df_test = pd.DataFrame({
+        'digit': [0,1],
+        'p0': [0,255],
+        'p1': [128,64]
+    })
+    arr_test = cleanTheData(df_test)
+    print(arr_test)
+    #test for predictiveModel function
+    train_arr = np.array([
+        [0,0.0,0.0],
+        [1,1.0,1.0]
+    ])
+    features = np.array([0.9,0.8])
+    print(predictiveModel(train_arr,features))
     #
     # OK!  Onward to knn for digits! (based on your iris work...)
     #
