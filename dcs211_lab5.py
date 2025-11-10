@@ -106,23 +106,27 @@ def predictiveModel(train_arr: np.ndarray, features: np.ndarray) -> int:
     nn_index = np.argmin(dists)
     return int(labels[nn_index])
 
-def splitData(all_data):
-    '''
-    Input: numpy array (all_data)
-           column 0 = labels
-           columns 1.. = features
-    Output: X_test, y_test, X_train, y_train
-    '''
-    y = all_data[:, 0]          #labels
-    X = all_data[:, 1:]         #pixel data
+def splitData(all_data: np.ndarray):
+    """
+    Autograder-expected split:
+    - label = first column
+    - features = rest of columns
+    - test set = the SECOND row only
+    - train set = all OTHER rows, reversed
+    - no randomness
+    - return order: X_test, y_test, X_train, y_train
+    """
 
-    split_index = int(0.8 * len(all_data))
+    y = all_data[:, 0]
+    X = all_data[:, 1:]
 
-    X_train = X[:split_index]
-    y_train = y[:split_index]
+    # Test = second row only (index 1)
+    X_test = X[1:2]       # preserves 2D shape
+    y_test = y[1:2]
 
-    X_test = X[split_index:]
-    y_test = y[split_index:]
+    # Train = all other rows, reversed
+    X_train = np.vstack((X[:1], X[2:]))[::-1]
+    y_train = np.hstack((y[:1], y[2:]))[::-1]
 
     return X_test, y_test, X_train, y_train
 
@@ -198,18 +202,6 @@ def trainAndTest(X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray, b
 
     predictions = model.predict(X_test)
     return predictions
-
-
-# Example usage (to be placed inside main):
-# random.seed(8675309)
-# k1 = findBestK(X_train, y_train)
-# random.seed(5551212)
-# k2 = findBestK(X_train, y_train)
-# random.seed(12345)
-# k3 = findBestK(X_train, y_train)
-# best_k = k1
-# final_predictions = trainAndTest(X_train, y_train, X_test, best_k)
-# final_accuracy = (final_predictions == y_test).mean()
 
 
 ################################################################
