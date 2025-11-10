@@ -37,7 +37,7 @@ def fetchDigit(df: pd.core.frame.DataFrame, which_row: int) -> tuple[int, np.nda
         df: pandas data frame expected to be obtained via pd.read_csv() on digits.csv
         which_row: an integer in 0 to len(df)
     Returns:
-        a tuple containing the reprsented digit and a numpy array of the pixel
+        a tuple containing the represented digit and a numpy array of the pixel
         values
     '''
     digit  = int(round(df.iloc[which_row, 64]))
@@ -49,34 +49,59 @@ def fetchDigit(df: pd.core.frame.DataFrame, which_row: int) -> tuple[int, np.nda
 
 
 def cleanTheData(df: pd.DataFrame) -> np.ndarray:
+    """Cleans the digits.csv dataframe for k-NN.
+    
+    Parameters:
+        df: The digits.csv data loaded with pd.read_csv().
+    
+    Returns:
+        np.ndarray: Array of the cleaned data.
     """
-    Cleans digits.csv data and returns as a NumPy array.
-    - Converts all columns to numeric
-    - Removes rows with NaNs
-    - Normalizes pixel values to [0, 1]
-    Returns array with label as first column.
-    """
-    df = df.dropna().copy()
-    for c in df.columns:
-        df[c] = pd.to_numeric(df[c], errors='coerce')
-    df = df.dropna().copy()
-    label_col = 'digit' if 'digit' in df.columns else df.columns[-1]
+    import numpy as np
+    import pandas as pd
+
+    # Define label and pixel columns explicitly
+    label_col = "actual_digit"
+    if label_col not in df.columns:
+        raise ValueError(f"Expected label column '{label_col}' not found in dataframe.")
     pixel_cols = [c for c in df.columns if c != label_col]
-    df[pixel_cols] = df[pixel_cols] / 255.0
-    array = df[[label_col] + pixel_cols].to_numpy()
-    return array
+    
+    # Ensure numeric conversion without nuking good values
+    df[pixel_cols] = df[pixel_cols].apply(pd.to_numeric, errors="coerce")
+    df[label_col] = pd.to_numeric(df[label_col], errors="coerce")
+    # Drop only rows where the label is missing
+    df = df.dropna(subset=[label_col]).copy()
+    df[pixel_cols] = df[pixel_cols].fillna(0)
+    df[pixel_cols] = df[pixel_cols] / 16.0
+    # Reorder columns so label comes first
+    df = df[[label_col] + pixel_cols]
+    all_arr = df.to_numpy()
+    
+    return all_arr
 
 def predictiveModel(train_arr: np.ndarray, features: np.ndarray) -> int:
+    """Implements a 1-NN classifier for one test sample.
+    Parameters:
+        train_arr: Training data where the first column is the label
+                   and the rest are pixel values.
+        features: The pixel values for one test digit
+    Returns:
+        int: predicted digit label (0–9)
     """
-    Implements 1-NN by hand.
-    train_arr: numpy array with labels in col 0, pixels in cols 1:
-    features: numpy array of pixel values for one test digit.
-    Returns predicted label.
-    """
+    # Separate labels and pixels
     labels = train_arr[:, 0].astype(int)
-    pixels = train_arr[:, 1:]
-    dists = np.linalg.norm(pixels - features[None, :], axis=1)
-    return int(labels[np.argmin(dists)])
+    pixels = train_arr[:, 1:]  # (N, 64)
+    # Ensure the test sample has same dimensionality
+    if features.ndim != 1:
+        features = features.flatten()
+    if features.shape[0] != pixels.shape[1]:
+        raise ValueError(f"Feature vector length {features.shape[0]} does not match training data ({pixels.shape[1]} pixels).")
+
+    # Compute distances
+    dists = np.linalg.norm(pixels - features, axis=1)
+    # Return label of nearest neighbor
+    nn_index = np.argmin(dists)
+    return int(labels[nn_index])
 
 ###################
 def main() -> None:
@@ -84,6 +109,7 @@ def main() -> None:
     filename = 'digits.csv'
     df = pd.read_csv(filename, header = 0)
     print(df.head())
+    print("Shape:", df.shape, list(df.columns))
     print(f"{filename} : file read into a pandas dataframe...")
 
     num_to_draw = 5
@@ -97,21 +123,46 @@ def main() -> None:
         print(f"The pixels are\n{pixels}")  
         drawDigitHeatmap(pixels)
         plt.show()
-    #test for cleanTheData function
-    df_test = pd.DataFrame({
-        'digit': [0,1],
-        'p0': [0,255],
-        'p1': [128,64]
-    })
-    arr_test = cleanTheData(df_test)
-    print(arr_test)
-    #test for predictiveModel function
-    train_arr = np.array([
-        [0,0.0,0.0],
-        [1,1.0,1.0]
-    ])
-    features = np.array([0.9,0.8])
-    print(predictiveModel(train_arr,features))
+    all_arr = cleanTheData(df)
+
+    # 1-NN classifier
+    from progress.bar import Bar
+    N = all_arr.shape[0]
+    cut = int(0.8 * N)
+    train, test = all_arr[:cut], all_arr[cut:]
+    y_test = test[:, 0].astype(int)
+    X_test = test[:, 1:]
+
+    print("Running 1-NN on 80/20 split...")
+    correct = 0
+    bar = Bar('Predicting', max=len(X_test))
+    for i in range(len(X_test)):
+        y_hat = predictiveModel(train, X_test[i])
+        if y_hat == y_test[i]:
+            correct += 1
+        bar.next()
+    bar.finish()
+    acc = correct / len(y_test)
+    print(f"\nAccuracy (80/20 split): {acc:.3f}\n")
+
+    # swap split (20/80)
+    cut = int(0.2 * N)
+    test, train = all_arr[:cut], all_arr[cut:]
+    y_test = test[:, 0].astype(int)
+    X_test = test[:, 1:]
+
+    print("Running 1-NN on 20/80 swap")
+    correct = 0
+    bar = Bar('Predicting (swap)', max=len(X_test))
+    for i in range(len(X_test)):
+        y_hat = predictiveModel(train, X_test[i])
+        if y_hat == y_test[i]:
+            correct += 1
+        bar.next()
+    bar.finish()
+    acc2 = correct / len(y_test)
+    print(f"\nAccuracy (20/80 swap): {acc2:.3f}\n")
+
     #
     # OK!  Onward to knn for digits! (based on your iris work...)
     #
