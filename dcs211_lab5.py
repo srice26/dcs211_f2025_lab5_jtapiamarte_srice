@@ -5,9 +5,7 @@ import seaborn as sns   # yay for Seaborn plots!
 import matplotlib.pyplot as plt
 import sklearn
 from sklearn.neighbors import KNeighborsClassifier
-
-
-###########################################################################
+from sklearn.model_selection import train_test_split
 
 def drawDigitHeatmap(pixels: np.ndarray, showNumbers: bool = True) -> None:
     ''' Draws a heat map of a given digit based on its 8x8 set of pixel values.
@@ -53,33 +51,28 @@ def fetchDigit(df: pd.core.frame.DataFrame, which_row: int) -> tuple[int, np.nda
 
 def cleanTheData(df: pd.DataFrame) -> np.ndarray:
     '''
-    Cleans the digits.csv dataframe for k-NN.
-    Parameters:
-        df: The digits.csv data loaded with pd.read_csv().
-    Returns:
-        np.ndarray: Array of the cleaned data.
+    Clean the input DataFrame for model training by converting pixel
+    and label columns to numeric types, handling missing values, and returning a
+    NumPy array with all pixel features followed by the label column.
+    Args:
+    df : pd.DataFrame, raw DataFrame containing pixel columns
+    Returns
+    np.ndarray, 2D NumPy array where each row represents one sample
     '''
-    import numpy as np
-    import pandas as pd
-
-    #define label and pixel columns 
     label_col = "actual_digit"
-    if label_col not in df.columns:
-        raise ValueError(f"Expected label column '{label_col}' not found in dataframe.")
-    pixel_cols = [c for c in df.columns if c != label_col]
-
-    #ensure numeric conversion without nuking good values
-    df[pixel_cols] = df[pixel_cols].apply(pd.to_numeric, errors="coerce")
-    df[label_col] = pd.to_numeric(df[label_col], errors="coerce")
-    #drop rows where the label is missing
-    df = df.dropna(subset=[label_col]).copy()
-    df[pixel_cols] = df[pixel_cols].fillna(0)
-    df[pixel_cols] = df[pixel_cols] / 16.0
-    #reorder columns so label comes first
-    df = df[[label_col] + pixel_cols]
-    all_arr = df.to_numpy()
     
-    return all_arr
+    pixel_cols = [c for c in df.columns if c.startswith("pix")] #select columns beginning with "pix" excludes actual label and empty column
+
+    #convert pixel columns into numeric values
+    df[pixel_cols] = df[pixel_cols].apply(pd.to_numeric)
+    df[label_col] = pd.to_numeric(df[label_col])
+
+    df = df.dropna(subset=[label_col]).copy() #drop any row that doesn't have an actual label
+    df[pixel_cols] = df[pixel_cols].fillna(0) #any cell missing a pixel value fill with 0
+
+    df = df[pixel_cols+ [label_col]] #reorder the array
+    return df.to_numpy()
+
 
 def predictiveModel(train_arr: np.ndarray, features: np.ndarray) -> int:
     '''
@@ -106,32 +99,30 @@ def predictiveModel(train_arr: np.ndarray, features: np.ndarray) -> int:
     nn_index = np.argmin(dists)
     return int(labels[nn_index])
 
-def splitData(all_data: np.ndarray):
-    """
-    Autograder-expected split:
-    - label = first column
-    - features = rest of columns
-    - test set = the SECOND row only
-    - train set = all OTHER rows, reversed
-    - no randomness
-    - return order: X_test, y_test, X_train, y_train
-    """
+def splitData(all_data: np.ndarray) -> list[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    '''
+    splits the  dataset into training (80%) and testing (20%) subsets
+    Args:
+    all_data: np.ndarray, 2D NumPy array containing the full dataset
+    Returns:
+    [X_test, y_test, X_train, y_train]: list of NumPy arrays containing test and training labels and features
+    '''
+    X = all_data[:, :-1] #all columns except the last one
+    y = all_data[:, -1] #the actual label column
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2) #split features and labels into training and testing subsets, 80/20 split
 
-    y = all_data[:, 0]
-    X = all_data[:, 1:]
-
-    # Test = second row only (index 1)
-    X_test = X[1:2]       # preserves 2D shape
-    y_test = y[1:2]
-
-    # Train = all other rows, reversed
-    X_train = np.vstack((X[:1], X[2:]))[::-1]
-    y_train = np.hstack((y[:1], y[2:]))[::-1]
-
-    return X_test, y_test, X_train, y_train
+    return [X_test, y_test, X_train, y_train]
 
 def compareLabels(predicted_labels: np.ndarray, actual_labels: np.ndarray) -> int:
-    '''A neatly formatted comparison, returning the number correct.'''
+    '''
+    prints row-by-row comparison of predicted versus actual labels and return
+    the total number of correct predictions.
+    Args:
+    predicted_labels: np.ndarray, 1D array of predicted labels
+    actual_labels: np.ndarray, 1D array of actual labels.
+    Returns
+    int: the number of correct label pair predictions
+    '''    
     num_labels = len(predicted_labels)
     num_correct = 0
 
@@ -152,10 +143,17 @@ def compareLabels(predicted_labels: np.ndarray, actual_labels: np.ndarray) -> in
     print(f"Correct: {num_correct} out of {num_labels}")
     return num_correct
 
-def runSimpleKNN(X_train, y_train, X_test, y_test, k=3):
+def runSimpleKNN(X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray, y_test: np.ndarray, k: int=3) -> tuple[np.ndarray, float]:
     '''
-    Runs scikit-learn k-NN once using a guessed value of k.
-    Prints accuracy and uses compareLabels to display results.
+    train and analyse a k-NN classifier on the data using a value of k. Prints accuracy and displays compared labels
+    Args:
+    X_train : np.ndarray, training feature matrix.
+    y_train : np.ndarray, training labels.
+    X_test : np.ndarray, test feature matrix.
+    y_test : np.ndarray, test labels.
+    k : int, number of neighbors to use in k-NN, default is 3.
+    Returns
+    tuple[np.ndarray, float], a tuple of the prediction array and the accuracy.
     '''
 
     model = KNeighborsClassifier(n_neighbors=k) #training the model
@@ -172,31 +170,43 @@ def runSimpleKNN(X_train, y_train, X_test, y_test, k=3):
 
 def findBestK(X_train: np.ndarray, y_train: np.ndarray) -> int:
     '''
-    Determines the best k for k-NN by testing multiple k values on the training set.
-    Returns the k with the highest training accuracy.
+    Analyse k-NN for multiple k values using the training set and returns the k value giving the highest training accuracy.
+    Args: 
+    X_train : np.ndarray, training feature matrix.
+    y_train : np.ndarray, training labels.
+    Returns
+    int: the k value giving the highest accuracy.
     '''
 
-    k_values = [1, 3, 5, 7, 9]
+    k_values = [1, 3, 5, 7, 9] #list of k values to test
     best_k = None
     best_accuracy = -1
 
-    for k in k_values:
+    for k in k_values: #evaluate each k value in the list
         model = KNeighborsClassifier(n_neighbors=k)
         model.fit(X_train, y_train)
 
         preds = model.predict(X_train)
-        accuracy = (preds == y_train).mean()
+        accuracy = (preds == y_train).mean() #get accuracy by comparing predictions with labels
 
         if accuracy > best_accuracy:
             best_accuracy = accuracy
             best_k = k
 
     return best_k
+ 
+def trainAndTest(X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray, best_k: int) -> np.ndarray:
+    '''
+    trains a k-NN classifier using the given best k value and print predictions on the test feature matrix.
+    Args:
+    X_train : np.ndarray, training feature matrix.
+    y_train : np.ndarray, training labels.
+    X_test : np.ndarray, test feature matrix.
+    best_k : int, best k value from findBestK functions
+    Returns:
+    np.ndarray, predicted labels for the test set.
+    '''
 
-def trainAndTest(X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray, best_k: int):
-    '''
-    Trains k-NN using the best k and returns predictions on X_test.
-    '''
     model = KNeighborsClassifier(n_neighbors=best_k)
     model.fit(X_train, y_train)
 
@@ -265,21 +275,18 @@ def main() -> None:
     acc2 = correct / len(y_test)
     print(f"\nAccuracy (20/80 swap): {acc2:.3f}\n")
 
-#--------------------------------------------------------------------
+    #splitTheData
     all_data = cleanTheData(df)
-
-    # 2. Split data (Part 7)
-    print("Splitting data into train/test...")
+    print("Splitting data into train/test:")
     X_test, y_test, X_train, y_train = splitData(all_data)
 
-    # 3. Run simple k-NN test with guessed k (Part 8)
-    print("Running simple k-NN with guessed k ===")
+    #runSimpleKNN
+    print("Running simple k-NN with guessed k:")
     guessed_k = 3
     preds8, acc8 = runSimpleKNN(X_train, y_train, X_test, y_test, guessed_k)
 
-    # 4. Find best k for three seeds (Part 9)
-    
-    print("Finding best k using multiple seeds ===")
+    #findBestK
+    print("Finding best k using multiple seeds:")
     random.seed(8675309)
     k1 = findBestK(X_train, y_train)
     print(f"Best k for seed 8675309: {k1}")
@@ -293,23 +300,17 @@ def main() -> None:
     k3 = findBestK(X_train, y_train)
     print(f"Best k for your seed {my_seed}: {k3}")
 
-    # Choose the best k (can justify using first, majority, or highest performance)
     best_k = k1
     print(f"best_k: {best_k}")
 
-    # 5. Train with best k and test (Part 10)
-    print("Training and testing with best_k ===")
+    #trainAndTest
+    print("Training and testing with best_k:")
     final_predictions = trainAndTest(X_train, y_train, X_test, best_k)
     final_accuracy = (final_predictions == y_test).mean()
-    print(f"Final accuracy using best_k={best_k}: {round(final_accuracy, 3)}")
+    print(f"best accuracy using best_k = {best_k}: {round(final_accuracy, 3)}")
 
-    # Compare predictions
+    #compareLabels
     compareLabels(final_predictions, y_test)
-
-    print("Done.")
-
-
-    
 
 if __name__ == "__main__":
     main()
